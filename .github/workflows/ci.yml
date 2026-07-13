@@ -109,6 +109,16 @@ jobs:
       - name: List package contents
         run: ls -la *.node
 
+      - name: Pack tarball (publish-ready artifact)
+        run: npm pack
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: "*.tgz"
+          if-no-files-found: error
+
       - name: Publish
         run: npm publish --access public
         env:
