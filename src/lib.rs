@@ -32,6 +32,7 @@ fn configure_command(cmd: &str, args: &[String], options: &Option<SpawnOptions>)
                 }
             }
         }
+        #[cfg(windows)]
         if opts.windows_hide.unwrap_or(false) {
             builder.windows_hide(true);
         }
