@@ -1,0 +1,41 @@
+{
+  "name": "rs-cross-spawn",
+  "version": "0.1.0",
+  "description": "Cross-platform process spawning powered by Rust — drop-in replacement for child_process.spawn with PATHEXT resolution, CMD built-in detection, and CREATE_NO_WINDOW support.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "rs-cross-spawn",
+    "triples": {
+      "defaults": true
+    }
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ViktorVeselov/rs-cross-spawn.git"
+  },
+  "keywords": [
+    "spawn",
+    "process",
+    "cross-platform",
+    "windows",
+    "rust",
+    "napi-rs"
+  ],
+  "author": "Viktor Veselov",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ViktorVeselov/rs-cross-spawn/issues"
+  },
+  "homepage": "https://github.com/ViktorVeselov/rs-cross-spawn#readme",
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "optionalDependencies": {
+    "@emnapi/runtime": "^1.3.0"
+  }
+}
