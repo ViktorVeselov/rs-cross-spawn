@@ -36,9 +36,6 @@ jobs:
           - host: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             build: npm run build:release -- --target aarch64-unknown-linux-gnu
-          - host: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            build: npm run build:release -- --target aarch64-unknown-linux-musl
     name: build ${{ matrix.settings.target }}
     runs-on: ${{ matrix.settings.host }}
     steps:
@@ -55,14 +52,15 @@ jobs:
         with:
           targets: ${{ matrix.settings.target }}
 
-      - name: Install cross linker (linux arm64)
-        if: contains(matrix.settings.target, 'aarch64-unknown-linux')
+      - name: Install cross linker (linux arm64 gnu)
+        if: matrix.settings.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
-      - name: Install cross linker (linux musl)
-        if: contains(matrix.settings.target, 'musl')
+      - name: Install musl toolchain (linux x64 musl)
+        if: matrix.settings.target == 'x86_64-unknown-linux-musl'
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
