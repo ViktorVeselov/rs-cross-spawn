@@ -34,9 +34,7 @@ dependencies = [
 
 [[package]]
 name = "cross-spawn"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f3e6c1611489c9bcd4b6f304ff26991a2d63a2e8ef8a4a95af0fcc409ebb25c"
+version = "0.1.1"
 dependencies = [
  "thiserror",
 ]

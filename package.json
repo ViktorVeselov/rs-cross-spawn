@@ -18,7 +18,8 @@
   },
   "scripts": {
     "build": "napi build --platform",
-    "build:release": "napi build --platform --release"
+    "build:release": "napi build --platform --release",
+    "test": "node test.js"
   },
   "repository": {
     "type": "git",

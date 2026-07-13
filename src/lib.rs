@@ -20,6 +20,21 @@ fn configure_command(cmd: &str, args: &[String], options: &Option<SpawnOptions>)
     let mut builder = cross_spawn::Command::new(cmd);
     builder.args(args);
 
+    #[cfg(windows)]
+    builder.double_escape_validator(|path| {
+        let lower = path.to_string_lossy().to_lowercase();
+        if !lower.ends_with(".cmd") {
+            return false;
+        }
+        let norm = lower.replace('\\', "/");
+        if let Some(idx) = norm.find("node_modules/.bin/") {
+            let after = &norm[idx + "node_modules/.bin/".len()..];
+            !after.contains('/')
+        } else {
+            false
+        }
+    });
+
     if let Some(opts) = options {
         if let Some(cwd) = &opts.cwd {
             builder.current_dir(cwd);
@@ -31,6 +46,9 @@ fn configure_command(cmd: &str, args: &[String], options: &Option<SpawnOptions>)
                     builder.env(k, v);
                 }
             }
+        }
+        if let Some(shell) = opts.shell {
+            builder.shell(shell);
         }
         #[cfg(windows)]
         if opts.windows_hide.unwrap_or(false) {
