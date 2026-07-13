@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "2", features = ["napi4", "napi5"] }
 napi-derive = "2"
-cross-spawn = { path = "../cross-spawn" }
+cross-spawn = "0.1.2"
 
 [build-dependencies]
 napi-build = "2"

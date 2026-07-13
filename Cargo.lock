@@ -34,7 +34,9 @@ dependencies = [
 
 [[package]]
 name = "cross-spawn"
-version = "0.1.1"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8763bb5e95211e0369dc47033ad4ba00eff4c9317db9d95ef27bf1cc47112253"
 dependencies = [
  "thiserror",
 ]
@@ -177,7 +179,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rs-cross-spawn"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cross-spawn",
  "napi",
