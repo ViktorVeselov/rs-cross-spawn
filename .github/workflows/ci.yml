@@ -9,115 +9,257 @@ on:
       - master
       - main
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  build:
+  # ── Windows (x64, arm64, ia32) ────────────────────────────────
+  build-windows:
     strategy:
       fail-fast: false
       matrix:
-        settings:
-          - host: windows-latest
-            target: x86_64-pc-windows-msvc
-            build: npm run build:release -- --target x86_64-pc-windows-msvc
-          - host: windows-latest
-            target: aarch64-pc-windows-msvc
-            build: npm run build:release -- --target aarch64-pc-windows-msvc
-          - host: macos-latest
-            target: x86_64-apple-darwin
-            build: npm run build:release -- --target x86_64-apple-darwin
-          - host: macos-latest
-            target: aarch64-apple-darwin
-            build: npm run build:release -- --target aarch64-apple-darwin
-          - host: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            build: npm run build:release -- --target x86_64-unknown-linux-gnu
-          - host: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            build: npm run build:release -- --target x86_64-unknown-linux-musl
-          - host: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            build: npm run build:release -- --target aarch64-unknown-linux-gnu
-    name: build ${{ matrix.settings.target }}
-    runs-on: ${{ matrix.settings.host }}
+        target:
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc
+          - i686-pc-windows-msvc
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.settings.target }}
-
-      - name: Install cross linker (linux arm64 gnu)
-        if: matrix.settings.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
-
-      - name: Install musl toolchain (linux x64 musl)
-        if: matrix.settings.target == 'x86_64-unknown-linux-musl'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: ${{ matrix.settings.build }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: npm install
+      - run: npm run build:release -- --target ${{ matrix.target }}
+      - run: node -e "const m=require('./index.js'); const r=m.execProcess('echo',['ok']); console.log(Buffer.from(r.stdout).toString())"
+        name: Smoke test
+      - uses: actions/upload-artifact@v4
         with:
-          name: bindings-${{ matrix.settings.target }}
+          name: bindings-${{ matrix.target }}
           path: "*.node"
           if-no-files-found: error
 
+  # ── macOS (x86_64, aarch64) ───────────────────────────────────
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: npm install
+      - run: npm run build:release -- --target ${{ matrix.target }}
+      - run: node -e "const m=require('./index.js'); const r=m.execProcess('echo',['ok']); console.log(Buffer.from(r.stdout).toString())"
+        name: Smoke test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: "*.node"
+          if-no-files-found: error
+
+  # ── macOS Universal (lipo fat binary) ─────────────────────────
+  build-macos-universal:
+    needs: build-macos
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bindings-x86_64-apple-darwin
+      - uses: actions/download-artifact@v4
+        with:
+          name: bindings-aarch64-apple-darwin
+      - run: |
+          lipo -create -output rs-cross-spawn.darwin-universal.node rs-cross-spawn.darwin-x64.node rs-cross-spawn.darwin-arm64.node
+          lipo -info rs-cross-spawn.darwin-universal.node
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-universal-apple-darwin
+          path: "*.node"
+
+  # ── Linux + FreeBSD ────────────────────────────────────────────
+  build-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+          - armv7-unknown-linux-gnueabihf
+          - armv7-unknown-linux-musleabihf
+          - riscv64gc-unknown-linux-gnu
+          - riscv64gc-unknown-linux-musl
+          - s390x-unknown-linux-gnu
+          - x86_64-unknown-freebsd
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      # ── GNU cross-compiler packages ──────────────────────
+      - name: Install aarch64 gcc
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Install armv7 gcc
+        if: matrix.target == 'armv7-unknown-linux-gnueabihf'
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-linux-gnueabihf
+      - name: Install riscv64 gcc
+        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu
+      - name: Install s390x gcc
+        if: matrix.target == 's390x-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-s390x-linux-gnu
+
+      # ── Set GNU linker env vars ──────────────────────────
+      - name: Set linker (aarch64-gnu)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Set linker (armv7-gnu)
+        if: matrix.target == 'armv7-unknown-linux-gnueabihf'
+        run: echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+      - name: Set linker (riscv64-gnu)
+        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
+        run: echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Set linker (s390x-gnu)
+        if: matrix.target == 's390x-unknown-linux-gnu'
+        run: echo "CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER=s390x-linux-gnu-gcc" >> $GITHUB_ENV
+
+      # ── x86_64 musl ──────────────────────────────────────
+      - name: Install musl-tools (x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # ── Non-x86_64 musl cross-toolchains (via musl.cc) ───
+      - name: Download musl-cross (aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: |
+          curl -fsSL https://musl.cc/aarch64-linux-musl-cross.tgz | sudo tar xz -C /opt
+          echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV
+      - name: Download musl-cross (armv7)
+        if: matrix.target == 'armv7-unknown-linux-musleabihf'
+        run: |
+          curl -fsSL https://musl.cc/armv7l-linux-musleabihf-cross.tgz | sudo tar xz -C /opt
+          echo "/opt/armv7l-linux-musleabihf-cross/bin" >> $GITHUB_PATH
+          echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=armv7l-linux-musleabihf-gcc" >> $GITHUB_ENV
+      - name: Download musl-cross (riscv64)
+        if: matrix.target == 'riscv64gc-unknown-linux-musl'
+        run: |
+          curl -fsSL https://musl.cc/riscv64-linux-musl-cross.tgz | sudo tar xz -C /opt
+          echo "/opt/riscv64-linux-musl-cross/bin" >> $GITHUB_PATH
+          echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_LINKER=riscv64-linux-musl-gcc" >> $GITHUB_ENV
+
+      # ── FreeBSD cross-linker (clang + lld) ────────────────
+      - name: Setup FreeBSD cross-linker
+        if: matrix.target == 'x86_64-unknown-freebsd'
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang lld
+          echo "CARGO_TARGET_X86_64_UNKNOWN_FREEBSD_LINKER=clang" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C link-arg=--target=x86_64-unknown-freebsd14 -C link-arg=-fuse-ld=lld" >> $GITHUB_ENV
+
+      # ── Build ───────────────────────────────────────────
+      - run: npm install
+      - run: npm run build:release -- --target ${{ matrix.target }}
+
+      # ── Smoke test ──────────────────────────────────────
+      - run: node -e "const m=require('./index.js'); console.log('Loaded OK, exports:', Object.keys(m))"
+        name: Smoke test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: "*.node"
+          if-no-files-found: error
+
+  # ── Android ───────────────────────────────────────────────────
+  build-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-linux-android
+          - armv7-linux-androideabi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Setup Android NDK
+        run: |
+          curl -fsSL -o ndk.zip https://dl.google.com/android/repository/android-ndk-r27-linux.zip
+          unzip -q ndk.zip && rm ndk.zip
+          NDK="$(pwd)/android-ndk-r27"
+          echo "ANDROID_NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          echo "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang" >> $GITHUB_ENV
+
+      - run: npm install
+      - run: npm run build:release -- --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: "*.node"
+          if-no-files-found: error
+
+  # ── Publish to npm (on tag push only) ─────────────────────────
   publish:
     name: Publish to npm
-    needs: build
+    needs:
+      - build-windows
+      - build-macos
+      - build-macos-universal
+      - build-linux
+      - build-android
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Download all bindings
-        uses: actions/download-artifact@v4
+      - run: npm install
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           pattern: bindings-*
           merge-multiple: true
-
-      - name: Collect binaries into package root
-        run: cp artifacts/*.node . || true
-
-      - name: List package contents
-        run: ls -la *.node
-
-      - name: Pack tarball (publish-ready artifact)
-        run: npm pack
-
-      - name: Upload tarball
-        uses: actions/upload-artifact@v4
+      - run: cp artifacts/*.node . 2>/dev/null || true
+      - run: ls -la *.node
+      - run: npm pack
+      - uses: actions/upload-artifact@v4
         with:
           name: npm-tarball
           path: "*.tgz"
           if-no-files-found: error
-
-      - name: Publish
-        run: npm publish --access public
+      - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

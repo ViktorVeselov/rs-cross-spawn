@@ -1,6 +1,6 @@
 {
   "name": "rs-cross-spawn",
-  "version": "0.0.1",
+  "version": "0.1.2",
   "description": "Cross-platform process spawning powered by Rust — drop-in replacement for child_process.spawn with PATHEXT resolution, CMD built-in detection, and CREATE_NO_WINDOW support.",
   "main": "index.js",
   "types": "index.d.ts",
