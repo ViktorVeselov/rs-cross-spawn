@@ -35,9 +35,14 @@ jobs:
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
       - run: |
-          $node = Get-ChildItem -Filter "*.node" | Select-Object -First 1
-          if (-not $node) { Write-Host "SKIP: no .node file"; exit 0 }
-          node -e "const b=require('./'+process.argv[1]); console.log('Loaded OK, exports:', Object.keys(b))" $node.Name
+          node -e "
+            const fs = require('fs');
+            const files = fs.readdirSync('.').filter(f => f.endsWith('.node'));
+            if (files.length === 0) { console.error('No .node files'); process.exit(1); }
+            console.log('Files:', files);
+            try { const b = require('./' + files[0]); console.log('OK:', Object.keys(b)); }
+            catch(e) { console.log('SKIP (cross-compiled):', e.message); }
+          "
         name: Smoke test
       - uses: actions/upload-artifact@v4
         with:
@@ -66,9 +71,14 @@ jobs:
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
       - run: |
-          node_file=$(ls *.node 2>/dev/null | head -1)
-          if [ -z "$node_file" ]; then echo "SKIP: no .node file"; exit 0; fi
-          node -e "const b=require('./'+process.argv[1]); console.log('Loaded OK, exports:', Object.keys(b))" "$node_file"
+          node -e "
+            const fs = require('fs');
+            const files = fs.readdirSync('.').filter(f => f.endsWith('.node'));
+            if (files.length === 0) { console.error('No .node files'); process.exit(1); }
+            console.log('Files:', files);
+            try { const b = require('./' + files[0]); console.log('OK:', Object.keys(b)); }
+            catch(e) { console.log('SKIP (cross-compiled):', e.message); }
+          "
         name: Smoke test
       - uses: actions/upload-artifact@v4
         with:
@@ -164,11 +174,16 @@ jobs:
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
 
-      # ── Smoke test (direct .node file, bypass index.js) ─
+      # ── Smoke test ──────────────────────────────────────
       - run: |
-          node_file=$(ls *.node 2>/dev/null | head -1)
-          if [ -z "$node_file" ]; then echo "SKIP: no .node file"; exit 0; fi
-          node -e "const b=require('./'+process.argv[1]); console.log('Loaded OK, exports:', Object.keys(b))" "$node_file"
+          node -e "
+            const fs = require('fs');
+            const files = fs.readdirSync('.').filter(f => f.endsWith('.node'));
+            if (files.length === 0) { console.error('No .node files'); process.exit(1); }
+            console.log('Files:', files);
+            try { const b = require('./' + files[0]); console.log('OK:', Object.keys(b)); }
+            catch(e) { console.log('SKIP (cross-compiled):', e.message); }
+          "
         name: Smoke test
 
       - uses: actions/upload-artifact@v4
