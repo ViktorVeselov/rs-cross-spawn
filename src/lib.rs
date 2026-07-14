@@ -137,25 +137,31 @@ pub fn spawn(
     let killed = Arc::new(AtomicBool::new(false));
 
     let tsfn_stdout = if let Some(func) = on_stdout {
-        Some(env.create_threadsafe_function(&func, 0, |ctx: ThreadSafeCallContext<Vec<u8>>| {
-            Ok(vec![Buffer::from(ctx.value)])
-        })?)
+        let tsfn: ThreadsafeFunction<Vec<u8>> =
+            env.create_threadsafe_function(&func, 0, |ctx: ThreadSafeCallContext<Vec<u8>>| {
+                Ok(vec![Buffer::from(ctx.value)])
+            })?;
+        Some(tsfn)
     } else {
         None
     };
 
     let tsfn_stderr = if let Some(func) = on_stderr {
-        Some(env.create_threadsafe_function(&func, 0, |ctx: ThreadSafeCallContext<Vec<u8>>| {
-            Ok(vec![Buffer::from(ctx.value)])
-        })?)
+        let tsfn: ThreadsafeFunction<Vec<u8>> =
+            env.create_threadsafe_function(&func, 0, |ctx: ThreadSafeCallContext<Vec<u8>>| {
+                Ok(vec![Buffer::from(ctx.value)])
+            })?;
+        Some(tsfn)
     } else {
         None
     };
 
     let tsfn_exit = if let Some(func) = on_exit {
-        Some(env.create_threadsafe_function(&func, 0, |ctx: ThreadSafeCallContext<i32>| {
-            Ok(vec![ctx.value])
-        })?)
+        let tsfn: ThreadsafeFunction<i32> =
+            env.create_threadsafe_function(&func, 0, |ctx: ThreadSafeCallContext<i32>| {
+                Ok(vec![ctx.value])
+            })?;
+        Some(tsfn)
     } else {
         None
     };
