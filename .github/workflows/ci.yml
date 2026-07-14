@@ -156,23 +156,24 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      # ── Non-x86_64 musl cross-toolchains (via musl.cc) ───
-      - name: Download musl-cross (aarch64)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
+      # ── Non-x86_64 musl targets (use cargo-zigbuild) ──────
+      - name: Install cargo-zigbuild
+        if: matrix.target == 'aarch64-unknown-linux-musl' || matrix.target == 'armv7-unknown-linux-musleabihf'
+        run: pip install cargo-zigbuild
+      - name: Build with zigbuild
+        if: matrix.target == 'aarch64-unknown-linux-musl' || matrix.target == 'armv7-unknown-linux-musleabihf'
         run: |
-          curl -fsSL --retry 5 --retry-delay 10 https://musl.cc/aarch64-linux-musl-cross.tgz | sudo tar xz -C /opt
-          echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV
-      - name: Download musl-cross (armv7)
-        if: matrix.target == 'armv7-unknown-linux-musleabihf'
-        run: |
-          curl -fsSL --retry 5 --retry-delay 10 https://musl.cc/armv7l-linux-musleabihf-cross.tgz | sudo tar xz -C /opt
-          echo "/opt/armv7l-linux-musleabihf-cross/bin" >> $GITHUB_PATH
-          echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=armv7l-linux-musleabihf-gcc" >> $GITHUB_ENV
+          cargo zigbuild --target ${{ matrix.target }} --release
+          case "${{ matrix.target }}" in
+            aarch64-unknown-linux-musl)   napi=linux-arm64-musl ;;
+            armv7-unknown-linux-musleabihf) napi=linux-arm-musleabihf ;;
+          esac
+          cp "target/${{ matrix.target }}/release/librs_cross_spawn.so" "rs-cross-spawn.$napi.node"
 
-      # ── Build ───────────────────────────────────────────
+      # ── Build (all other targets via napi) ──────────────
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
+        if: matrix.target != 'aarch64-unknown-linux-musl' && matrix.target != 'armv7-unknown-linux-musleabihf'
 
       # ── Smoke test ──────────────────────────────────────
       - run: |
