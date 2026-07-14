@@ -114,9 +114,7 @@ jobs:
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-musl
           - armv7-unknown-linux-gnueabihf
-          - armv7-unknown-linux-musleabihf
           - s390x-unknown-linux-gnu
     runs-on: ubuntu-latest
     steps:
@@ -156,24 +154,9 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      # ── Non-x86_64 musl targets (use cargo-zigbuild) ──────
-      - name: Install cargo-zigbuild
-        if: matrix.target == 'aarch64-unknown-linux-musl' || matrix.target == 'armv7-unknown-linux-musleabihf'
-        run: pip install cargo-zigbuild
-      - name: Build with zigbuild
-        if: matrix.target == 'aarch64-unknown-linux-musl' || matrix.target == 'armv7-unknown-linux-musleabihf'
-        run: |
-          cargo zigbuild --target ${{ matrix.target }} --release
-          case "${{ matrix.target }}" in
-            aarch64-unknown-linux-musl)   napi=linux-arm64-musl ;;
-            armv7-unknown-linux-musleabihf) napi=linux-arm-musleabihf ;;
-          esac
-          cp "target/${{ matrix.target }}/release/librs_cross_spawn.so" "rs-cross-spawn.$napi.node"
-
-      # ── Build (all other targets via napi) ──────────────
+      # ── Build ───────────────────────────────────────────
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
-        if: matrix.target != 'aarch64-unknown-linux-musl' && matrix.target != 'armv7-unknown-linux-musleabihf'
 
       # ── Smoke test ──────────────────────────────────────
       - run: |
@@ -297,9 +280,7 @@ jobs:
                 'linux-x64-gnu':       { os: 'linux', cpu: 'x64' },
                 'linux-x64-musl':      { os: 'linux', cpu: 'x64' },
                 'linux-arm64-gnu':     { os: 'linux', cpu: 'arm64' },
-                'linux-arm64-musl':    { os: 'linux', cpu: 'arm64' },
                 'linux-arm-gnueabihf': { os: 'linux', cpu: 'arm' },
-                'linux-arm-musleabihf':{ os: 'linux', cpu: 'arm' },
                 'linux-s390x-gnu':     { os: 'linux', cpu: 's390x' },
                 'freebsd-x64':         { os: 'freebsd', cpu: 'x64' },
                 'android-arm64':       { os: 'android', cpu: 'arm64' },
