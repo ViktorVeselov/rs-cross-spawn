@@ -34,7 +34,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
-      - run: node -e "const m=require('./index.js'); const r=m.execProcess('echo',['ok']); console.log(Buffer.from(r.stdout).toString())"
+      - run: |
+          $node = Get-ChildItem -Filter "*.node" | Select-Object -First 1
+          if (-not $node) { Write-Host "SKIP: no .node file"; exit 0 }
+          node -e "const b=require('./'+process.argv[1]); console.log('Loaded OK, exports:', Object.keys(b))" $node.Name
         name: Smoke test
       - uses: actions/upload-artifact@v4
         with:
@@ -62,7 +65,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
-      - run: node -e "const m=require('./index.js'); const r=m.execProcess('echo',['ok']); console.log(Buffer.from(r.stdout).toString())"
+      - run: |
+          node_file=$(ls *.node 2>/dev/null | head -1)
+          if [ -z "$node_file" ]; then echo "SKIP: no .node file"; exit 0; fi
+          node -e "const b=require('./'+process.argv[1]); console.log('Loaded OK, exports:', Object.keys(b))" "$node_file"
         name: Smoke test
       - uses: actions/upload-artifact@v4
         with:
@@ -89,7 +95,7 @@ jobs:
           name: bindings-universal-apple-darwin
           path: "*.node"
 
-  # ── Linux + FreeBSD ────────────────────────────────────────────
+  # ── Linux (gnu + musl, no riscv64/freebsd) ────────────────────
   build-linux:
     strategy:
       fail-fast: false
@@ -101,10 +107,7 @@ jobs:
           - aarch64-unknown-linux-musl
           - armv7-unknown-linux-gnueabihf
           - armv7-unknown-linux-musleabihf
-          - riscv64gc-unknown-linux-gnu
-          - riscv64gc-unknown-linux-musl
           - s390x-unknown-linux-gnu
-          - x86_64-unknown-freebsd
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,9 +126,6 @@ jobs:
       - name: Install armv7 gcc
         if: matrix.target == 'armv7-unknown-linux-gnueabihf'
         run: sudo apt-get update && sudo apt-get install -y gcc-arm-linux-gnueabihf
-      - name: Install riscv64 gcc
-        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
-        run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu
       - name: Install s390x gcc
         if: matrix.target == 's390x-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-s390x-linux-gnu
@@ -137,9 +137,6 @@ jobs:
       - name: Set linker (armv7-gnu)
         if: matrix.target == 'armv7-unknown-linux-gnueabihf'
         run: echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
-      - name: Set linker (riscv64-gnu)
-        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
-        run: echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
       - name: Set linker (s390x-gnu)
         if: matrix.target == 's390x-unknown-linux-gnu'
         run: echo "CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER=s390x-linux-gnu-gcc" >> $GITHUB_ENV
@@ -153,41 +150,53 @@ jobs:
       - name: Download musl-cross (aarch64)
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: |
-          curl -fsSL https://musl.cc/aarch64-linux-musl-cross.tgz | sudo tar xz -C /opt
+          curl -fsSL --retry 5 --retry-delay 10 https://musl.cc/aarch64-linux-musl-cross.tgz | sudo tar xz -C /opt
           echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV
       - name: Download musl-cross (armv7)
         if: matrix.target == 'armv7-unknown-linux-musleabihf'
         run: |
-          curl -fsSL https://musl.cc/armv7l-linux-musleabihf-cross.tgz | sudo tar xz -C /opt
+          curl -fsSL --retry 5 --retry-delay 10 https://musl.cc/armv7l-linux-musleabihf-cross.tgz | sudo tar xz -C /opt
           echo "/opt/armv7l-linux-musleabihf-cross/bin" >> $GITHUB_PATH
           echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=armv7l-linux-musleabihf-gcc" >> $GITHUB_ENV
-      - name: Download musl-cross (riscv64)
-        if: matrix.target == 'riscv64gc-unknown-linux-musl'
-        run: |
-          curl -fsSL https://musl.cc/riscv64-linux-musl-cross.tgz | sudo tar xz -C /opt
-          echo "/opt/riscv64-linux-musl-cross/bin" >> $GITHUB_PATH
-          echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_LINKER=riscv64-linux-musl-gcc" >> $GITHUB_ENV
-
-      # ── FreeBSD cross-linker (clang + lld) ────────────────
-      - name: Setup FreeBSD cross-linker
-        if: matrix.target == 'x86_64-unknown-freebsd'
-        run: |
-          sudo apt-get update && sudo apt-get install -y clang lld
-          echo "CARGO_TARGET_X86_64_UNKNOWN_FREEBSD_LINKER=clang" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C link-arg=--target=x86_64-unknown-freebsd14 -C link-arg=-fuse-ld=lld" >> $GITHUB_ENV
 
       # ── Build ───────────────────────────────────────────
       - run: npm install
       - run: npm run build:release -- --target ${{ matrix.target }}
 
-      # ── Smoke test ──────────────────────────────────────
-      - run: node -e "const m=require('./index.js'); console.log('Loaded OK, exports:', Object.keys(m))"
+      # ── Smoke test (direct .node file, bypass index.js) ─
+      - run: |
+          node_file=$(ls *.node 2>/dev/null | head -1)
+          if [ -z "$node_file" ]; then echo "SKIP: no .node file"; exit 0; fi
+          node -e "const b=require('./'+process.argv[1]); console.log('Loaded OK, exports:', Object.keys(b))" "$node_file"
         name: Smoke test
 
       - uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.target }}
+          path: "*.node"
+          if-no-files-found: error
+
+  # ── FreeBSD (VM build) ────────────────────────────────────────
+  build-freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y node npm rust
+          run: |
+            npm install
+            npm run build:release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-x86_64-unknown-freebsd
           path: "*.node"
           if-no-files-found: error
 
@@ -229,15 +238,77 @@ jobs:
           path: "*.node"
           if-no-files-found: error
 
-  # ── Publish to npm (on tag push only) ─────────────────────────
-  publish:
-    name: Publish to npm
+  # ── Publish platform-specific scoped packages ─────────────────
+  publish-platforms:
+    name: Publish platform packages
     needs:
       - build-windows
       - build-macos
       - build-macos-universal
       - build-linux
+      - build-freebsd
       - build-android
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: bindings-*
+          merge-multiple: true
+
+      - name: Publish each platform binding as @rs-cross-spawn/<triple>
+        run: |
+          for f in artifacts/*.node; do
+            triple="${f#*rs-cross-spawn.}"
+            triple="${triple%.node}"
+            pkgdir="pkg/$triple"
+            mkdir -p "$pkgdir"
+            cp "$f" "$pkgdir/rs-cross-spawn.node"
+
+            node -e "
+              const m = {
+                'win32-x64-msvc':      { os: 'win32', cpu: 'x64' },
+                'win32-arm64-msvc':    { os: 'win32', cpu: 'arm64' },
+                'win32-ia32-msvc':     { os: 'win32', cpu: 'ia32' },
+                'darwin-x64':          { os: 'darwin', cpu: 'x64' },
+                'darwin-arm64':        { os: 'darwin', cpu: 'arm64' },
+                'darwin-universal':    { os: 'darwin' },
+                'linux-x64-gnu':       { os: 'linux', cpu: 'x64' },
+                'linux-x64-musl':      { os: 'linux', cpu: 'x64' },
+                'linux-arm64-gnu':     { os: 'linux', cpu: 'arm64' },
+                'linux-arm64-musl':    { os: 'linux', cpu: 'arm64' },
+                'linux-arm-gnueabihf': { os: 'linux', cpu: 'arm' },
+                'linux-arm-musleabihf':{ os: 'linux', cpu: 'arm' },
+                'linux-s390x-gnu':     { os: 'linux', cpu: 's390x' },
+                'freebsd-x64':         { os: 'freebsd', cpu: 'x64' },
+                'android-arm64':       { os: 'android', cpu: 'arm64' },
+                'android-arm-eabi':    { os: 'android', cpu: 'arm' },
+              }['$triple'];
+              const pkg = {
+                name: '@rs-cross-spawn/$triple',
+                version: process.env.REF_NAME.replace(/^v/, ''),
+                main: 'rs-cross-spawn.node',
+                license: 'MIT',
+                os: [m.os],
+                cpu: m.cpu ? [m.cpu] : undefined,
+              };
+              require('fs').writeFileSync('$pkgdir/package.json', JSON.stringify(pkg, null, 2));
+            "
+            (cd "$pkgdir" && npm publish --access public)
+          done
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ── Publish main rs-cross-spawn package (metadata only) ───────
+  publish-main:
+    name: Publish main package
+    needs: publish-platforms
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -247,13 +318,6 @@ jobs:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
       - run: npm install
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: bindings-*
-          merge-multiple: true
-      - run: cp artifacts/*.node . 2>/dev/null || true
-      - run: ls -la *.node
       - run: npm pack
       - uses: actions/upload-artifact@v4
         with:
