@@ -1,15 +1,15 @@
 // End-to-end tests for the rs-cross-spawn NAPI binding.
 // These exercise the same scenarios as the Rust integration tests, but through
-// the native module loaded from JavaScript. Run with: `node test.js`
+// the native module loaded from JavaScript. Run with: `node tests/test.js`
 // (after `bun run build` has produced the platform .node artifact).
 'use strict';
 
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { execProcess } = require('./index.js');
+const { execProcess } = require('../index.js');
 
-const FIXTURES = path.join(__dirname, 'target', 'test_fixtures');
+const FIXTURES = path.resolve(__dirname, '..', 'target', 'test_fixtures');
 
 function setupFixtures() {
   if (fs.existsSync(FIXTURES)) {
@@ -18,31 +18,31 @@ function setupFixtures() {
   fs.mkdirSync(FIXTURES, { recursive: true });
   fs.mkdirSync(path.join(FIXTURES, 'node_modules', '.bin'), { recursive: true });
 
-  // 1. say-foo
+  // say-foo
   fs.writeFileSync(path.join(FIXTURES, 'say-foo'), '#!/usr/bin/env test_helper\n');
   fs.writeFileSync(path.join(FIXTURES, 'say-foo.bat'), '@test_helper echo foo\n');
 
-  // 2. shebang
+  // shebang
   fs.writeFileSync(path.join(FIXTURES, 'shebang'), '#!/usr/bin/env test_helper\nshebang works!');
 
-  // 3. shebang-enoent
+  // shebang-enoent
   fs.writeFileSync(path.join(FIXTURES, 'shebang-enoent'), '#!/usr/bin/env somecommandthatwillneverexist\n');
 
-  // 4. %CD%
+  // %CD%
   fs.writeFileSync(path.join(FIXTURES, '%CD%'), '#!/usr/bin/env test_helper\n');
   fs.writeFileSync(path.join(FIXTURES, '%CD%.bat'), '@test_helper echo special\n');
 
-  // 5. ()%!^&;, 
+  // ()%!^&;, 
   fs.writeFileSync(path.join(FIXTURES, '()%!^&;, '), '#!/usr/bin/env test_helper\n');
   fs.writeFileSync(path.join(FIXTURES, '()%!^&;, .bat'), '@test_helper echo special\n');
 
-  // 6. cmd-shim
+  // cmd-shim
   fs.writeFileSync(path.join(FIXTURES, 'node_modules', '.bin', 'echo-cmd-shim.cmd'), '@test_helper echo %*\n');
 
-  // 7. whoami.cmd
+  // whoami.cmd
   fs.writeFileSync(path.join(FIXTURES, 'whoami.cmd'), '@echo you sure are someone\n');
 
-  // 8. exit-1
+  // exit-1
   fs.writeFileSync(path.join(FIXTURES, 'exit-1'), '#!/usr/bin/env test_helper\n');
   fs.writeFileSync(path.join(FIXTURES, 'exit-1.bat'), '@test_helper exit 1\n');
 
@@ -51,7 +51,7 @@ function setupFixtures() {
     for (const name of ['say-foo', 'shebang', 'shebang-enoent', '%CD%', '()%!^&;, ', 'exit-1']) {
       try {
         fs.chmodSync(path.join(FIXTURES, name), 0o755);
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 }
@@ -59,12 +59,12 @@ function setupFixtures() {
 function run(cmd, args, options) {
   options = options || {};
   const envObj = options.env || { ...process.env };
-  
+
   // Prepend test_helper build directory to PATH so shebang resolution can find it
-  const HELPER_DIR = path.resolve(__dirname, '..', 'cross-spawn', 'target', 'debug');
+  const HELPER_DIR = path.resolve(__dirname, '..', '..', 'cross-spawn', 'target', 'debug');
   const pathKey = Object.keys(envObj).find(k => k.toUpperCase() === 'PATH') || 'PATH';
   envObj[pathKey] = `${HELPER_DIR}${process.platform === 'win32' ? ';' : ':'}${envObj[pathKey] || ''}`;
-  
+
   // Convert object to array of KEY=VALUE strings for NAPI
   options.env = Object.entries(envObj).map(([k, v]) => `${k}=${v}`);
 
@@ -83,8 +83,85 @@ function norm(s) {
   return s.replace(/\r/g, '');
 }
 
+function testIsMusl() {
+  console.log('Running unit tests for isMusl()...');
+  const { isMusl } = require('../index.js');
+
+  // Save originals
+  const originalReportDescriptor = Object.getOwnPropertyDescriptor(process, 'report');
+  const originalReadFileSync = fs.readFileSync;
+
+  function mockProcessReport(reportVal) {
+    Object.defineProperty(process, 'report', {
+      value: reportVal,
+      configurable: true,
+      writable: true,
+      enumerable: true
+    });
+  }
+
+  try {
+    // Process.report is present and indicates glibc
+    mockProcessReport({
+      getReport: () => ({
+        header: { glibcVersionRuntime: '2.31' }
+      })
+    });
+    assert.strictEqual(isMusl(), false, 'isMusl() should be false if glibc is detected');
+
+    // Process.report is present and indicates musl (no glibc version)
+    mockProcessReport({
+      getReport: () => ({
+        header: {}
+      })
+    });
+    assert.strictEqual(isMusl(), true, 'isMusl() should be true if glibc is not detected');
+
+    // Process.report is absent, and /proc/self/maps contains 'musl'
+    Object.defineProperty(process, 'report', {
+      value: undefined,
+      configurable: true,
+      writable: true
+    });
+    fs.readFileSync = (path, encoding) => {
+      if (path === '/proc/self/maps') {
+        return '7f8c05000000-7f8c05021000 r-xp 00000000 08:01 123456 /lib/ld-musl-x86_64.so.1';
+      }
+      throw new Error(`Unexpected read of ${path}`);
+    };
+    assert.strictEqual(isMusl(), true, 'isMusl() should fallback to maps read and detect musl');
+
+    // Process.report is absent, and /proc/self/maps does not contain 'musl'
+    fs.readFileSync = (path, encoding) => {
+      if (path === '/proc/self/maps') {
+        return '7f8c05000000-7f8c05021000 r-xp 00000000 08:01 123456 /lib/ld-linux-x86-64.so.2';
+      }
+      throw new Error(`Unexpected read of ${path}`);
+    };
+    assert.strictEqual(isMusl(), false, 'isMusl() should fallback to maps read and detect glibc');
+
+    // Process.report is absent, and /proc/self/maps throws an error (default fallback)
+    fs.readFileSync = (path, encoding) => {
+      throw new Error('Permission denied');
+    };
+    assert.strictEqual(isMusl(), true, 'isMusl() should default to true on error in fallback');
+
+  } finally {
+    // Restore originals
+    if (originalReportDescriptor) {
+      Object.defineProperty(process, 'report', originalReportDescriptor);
+    } else {
+      delete process.report;
+    }
+    fs.readFileSync = originalReadFileSync;
+  }
+  console.log('isMusl() unit tests passed successfully.');
+}
+
 async function main() {
+  testIsMusl();
   console.log('Setting up dynamic test fixtures...');
+
   setupFixtures();
 
   // PATHEXT resolution: bare `say-foo` -> say-foo.bat on Windows.

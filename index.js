@@ -17,8 +17,7 @@ function isMusl() {
   // For Node 10
   if (!process.report || typeof process.report.getReport !== 'function') {
     try {
-      const lddPath = require('child_process').execSync('which ldd').toString().trim()
-      return readFileSync(lddPath, 'utf8').includes('musl')
+      return require('fs').readFileSync('/proc/self/maps', 'utf8').includes('musl')
     } catch (e) {
       return true
     }
@@ -315,3 +314,4 @@ const { execProcess, spawn, killProcess } = nativeBinding
 module.exports.execProcess = execProcess
 module.exports.spawn = spawn
 module.exports.killProcess = killProcess
+module.exports.isMusl = isMusl
