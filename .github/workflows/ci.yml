@@ -114,7 +114,11 @@ jobs:
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
           - armv7-unknown-linux-gnueabihf
+          - armv7-unknown-linux-musleabihf
+          - riscv64gc-unknown-linux-gnu
+          - riscv64gc-unknown-linux-musl
           - s390x-unknown-linux-gnu
     runs-on: ubuntu-latest
     steps:
@@ -129,11 +133,14 @@ jobs:
 
       # ── GNU cross-compiler packages ──────────────────────
       - name: Install aarch64 gcc
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Install armv7 gcc
-        if: matrix.target == 'armv7-unknown-linux-gnueabihf'
+        if: matrix.target == 'armv7-unknown-linux-gnueabihf' || matrix.target == 'armv7-unknown-linux-musleabihf'
         run: sudo apt-get update && sudo apt-get install -y gcc-arm-linux-gnueabihf
+      - name: Install riscv64 gcc
+        if: matrix.target == 'riscv64gc-unknown-linux-gnu' || matrix.target == 'riscv64gc-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu
       - name: Install s390x gcc
         if: matrix.target == 's390x-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-s390x-linux-gnu
@@ -142,9 +149,21 @@ jobs:
       - name: Set linker (aarch64-gnu)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Set linker (aarch64-musl)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
       - name: Set linker (armv7-gnu)
         if: matrix.target == 'armv7-unknown-linux-gnueabihf'
         run: echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+      - name: Set linker (armv7-musl)
+        if: matrix.target == 'armv7-unknown-linux-musleabihf'
+        run: echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+      - name: Set linker (riscv64-gnu)
+        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
+        run: echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Set linker (riscv64-musl)
+        if: matrix.target == 'riscv64gc-unknown-linux-musl'
+        run: echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
       - name: Set linker (s390x-gnu)
         if: matrix.target == 's390x-unknown-linux-gnu'
         run: echo "CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER=s390x-linux-gnu-gcc" >> $GITHUB_ENV
@@ -282,7 +301,11 @@ jobs:
                 'linux-x64-gnu':       { os: 'linux', cpu: 'x64' },
                 'linux-x64-musl':      { os: 'linux', cpu: 'x64' },
                 'linux-arm64-gnu':     { os: 'linux', cpu: 'arm64' },
+                'linux-arm64-musl':    { os: 'linux', cpu: 'arm64' },
                 'linux-arm-gnueabihf': { os: 'linux', cpu: 'arm' },
+                'linux-arm-musleabihf': { os: 'linux', cpu: 'arm' },
+                'linux-riscv64-gnu':   { os: 'linux', cpu: 'riscv64' },
+                'linux-riscv64-musl':  { os: 'linux', cpu: 'riscv64' },
                 'linux-s390x-gnu':     { os: 'linux', cpu: 's390x' },
                 'freebsd-x64':         { os: 'freebsd', cpu: 'x64' },
                 'android-arm64':       { os: 'android', cpu: 'arm64' },

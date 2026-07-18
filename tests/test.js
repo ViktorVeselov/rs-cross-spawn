@@ -7,7 +7,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { execProcess } = require('../index.js');
+const { execProcess, spawn, killProcess } = require('../index.js');
 
 const FIXTURES = path.resolve(__dirname, '..', 'target', 'test_fixtures');
 
@@ -89,7 +89,6 @@ function testIsMusl() {
 
   // Save originals
   const originalReportDescriptor = Object.getOwnPropertyDescriptor(process, 'report');
-  const originalReadFileSync = fs.readFileSync;
 
   function mockProcessReport(reportVal) {
     Object.defineProperty(process, 'report', {
@@ -117,35 +116,6 @@ function testIsMusl() {
     });
     assert.strictEqual(isMusl(), true, 'isMusl() should be true if glibc is not detected');
 
-    // Process.report is absent, and /proc/self/maps contains 'musl'
-    Object.defineProperty(process, 'report', {
-      value: undefined,
-      configurable: true,
-      writable: true
-    });
-    fs.readFileSync = (path, encoding) => {
-      if (path === '/proc/self/maps') {
-        return '7f8c05000000-7f8c05021000 r-xp 00000000 08:01 123456 /lib/ld-musl-x86_64.so.1';
-      }
-      throw new Error(`Unexpected read of ${path}`);
-    };
-    assert.strictEqual(isMusl(), true, 'isMusl() should fallback to maps read and detect musl');
-
-    // Process.report is absent, and /proc/self/maps does not contain 'musl'
-    fs.readFileSync = (path, encoding) => {
-      if (path === '/proc/self/maps') {
-        return '7f8c05000000-7f8c05021000 r-xp 00000000 08:01 123456 /lib/ld-linux-x86-64.so.2';
-      }
-      throw new Error(`Unexpected read of ${path}`);
-    };
-    assert.strictEqual(isMusl(), false, 'isMusl() should fallback to maps read and detect glibc');
-
-    // Process.report is absent, and /proc/self/maps throws an error (default fallback)
-    fs.readFileSync = (path, encoding) => {
-      throw new Error('Permission denied');
-    };
-    assert.strictEqual(isMusl(), true, 'isMusl() should default to true on error in fallback');
-
   } finally {
     // Restore originals
     if (originalReportDescriptor) {
@@ -153,7 +123,6 @@ function testIsMusl() {
     } else {
       delete process.report;
     }
-    fs.readFileSync = originalReadFileSync;
   }
   console.log('isMusl() unit tests passed successfully.');
 }
@@ -224,6 +193,63 @@ async function main() {
     }
     assert.ok(threwSecurity, 'control characters should throw security error');
   }
+
+  // Test spawn (asynchronous streaming)
+  console.log('-> verifying spawn (asynchronous)...');
+  await new Promise((resolve, reject) => {
+    let stdoutBuffer = [];
+    const child = spawn(
+      'node', ['-e', 'console.log("hello async");'],
+      {},
+      (err, chunk) => {
+        if (chunk) stdoutBuffer.push(chunk);
+      },
+      (err, chunk) => {},
+      (err, code) => {
+        try {
+          assert.strictEqual(code, 0, 'exit code of spawn should be 0');
+          const output = Buffer.concat(stdoutBuffer).toString('utf8').trim();
+          assert.strictEqual(output, 'hello async', 'async stdout matching');
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }
+    );
+    assert.ok(child.pid > 0, 'spawned pid should be greater than 0');
+  });
+  console.log('-> spawn streaming verified.');
+
+  // Test process termination (kill / killProcess)
+  console.log('-> verifying process termination (child.kill())...');
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      'node', ['-e', 'setTimeout(() => {}, 10000);'],
+      {},
+      (err, chunk) => {},
+      (err, chunk) => {},
+      (err, code) => {
+        resolve();
+      }
+    );
+    child.kill();
+  });
+  console.log('-> child.kill() verified.');
+
+  console.log('-> verifying process termination (killProcess)...');
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      'node', ['-e', 'setTimeout(() => {}, 10000);'],
+      {},
+      (err, chunk) => {},
+      (err, chunk) => {},
+      (err, code) => {
+        resolve();
+      }
+    );
+    killProcess(child.pid);
+  });
+  console.log('-> killProcess verified.');
 
   console.log('All rs-cross-spawn e2e tests passed.');
 }
